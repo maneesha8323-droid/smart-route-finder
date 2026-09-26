@@ -10,52 +10,154 @@ import webbrowser
 
 def find_location(place):
 
-    queries = [
-        f"{place}, Andhra Pradesh, India",
-        f"{place}, India"
-    ]
+    url = "https://nominatim.openstreetmap.org/search"
+
+    # First search normally in India.
+    # We do NOT force Andhra Pradesh because the
+    # destination may be in another state, e.g. Hyderabad.
+    params = {
+        "q": f"{place}, India",
+        "format": "jsonv2",
+        "limit": 5,
+        "countrycodes": "in",
+        "addressdetails": 1
+    }
 
     headers = {
         "User-Agent": "SmartRouteFinder/1.0"
     }
 
-    for query in queries:
+    try:
 
-        url = "https://nominatim.openstreetmap.org/search"
+        response = requests.get(
+            url,
+            params=params,
+            headers=headers,
+            timeout=15
+        )
 
-        params = {
-            "q": query,
-            "format": "jsonv2",
-            "limit": 1,
-            "countrycodes": "in"
-        }
+        response.raise_for_status()
 
-        try:
+        data = response.json()
 
-            response = requests.get(
-                url,
-                params=params,
-                headers=headers,
-                timeout=15
-            )
-
-            response.raise_for_status()
-
-            data = response.json()
-
-            if data:
-
-                latitude = float(data[0]["lat"])
-                longitude = float(data[0]["lon"])
-                name = data[0]["display_name"]
-
-                return latitude, longitude, name
-
-        except requests.RequestException:
-
+        if not data:
             return None
 
-    return None
+        place_lower = place.strip().lower()
+
+        # ======================================
+        # 1. PREFER EXACT CITY/TOWN/VILLAGE
+        # ======================================
+
+        for item in data:
+
+            place_type = item.get(
+                "type",
+                ""
+            ).lower()
+
+            name = item.get(
+                "name",
+                ""
+            ).lower()
+
+            if place_type in [
+                "city",
+                "town",
+                "village",
+                "municipality"
+            ]:
+
+                if (
+                    place_lower == name
+                    or place_lower in name
+                ):
+
+                    latitude = float(
+                        item["lat"]
+                    )
+
+                    longitude = float(
+                        item["lon"]
+                    )
+
+                    display_name = item[
+                        "display_name"
+                    ]
+
+                    return (
+                        latitude,
+                        longitude,
+                        display_name
+                    )
+
+        # ======================================
+        # 2. OTHERWISE PREFER CITY/TOWN/VILLAGE
+        # ======================================
+
+        for item in data:
+
+            place_type = item.get(
+                "type",
+                ""
+            ).lower()
+
+            if place_type in [
+                "city",
+                "town",
+                "village",
+                "municipality"
+            ]:
+
+                latitude = float(
+                    item["lat"]
+                )
+
+                longitude = float(
+                    item["lon"]
+                )
+
+                display_name = item[
+                    "display_name"
+                ]
+
+                return (
+                    latitude,
+                    longitude,
+                    display_name
+                )
+
+        # ======================================
+        # 3. FALLBACK
+        # ======================================
+
+        item = data[0]
+
+        latitude = float(
+            item["lat"]
+        )
+
+        longitude = float(
+            item["lon"]
+        )
+
+        display_name = item[
+            "display_name"
+        ]
+
+        return (
+            latitude,
+            longitude,
+            display_name
+        )
+
+    except requests.RequestException:
+
+        return None
+
+    except (ValueError, KeyError, IndexError):
+
+        return None
 
 
 # ==========================================
@@ -114,7 +216,6 @@ def search_route():
 
     destination = destination_entry.get().strip()
 
-
     # Check empty fields
 
     if start == "" or destination == "":
@@ -126,14 +227,12 @@ def search_route():
 
         return
 
-
     # Clear previous result
 
     result_box.delete(
         "1.0",
         tk.END
     )
-
 
     result_box.insert(
         tk.END,
@@ -142,13 +241,11 @@ def search_route():
 
     root.update()
 
-
     # ======================================
     # FIND START LOCATION
     # ======================================
 
     start_location = find_location(start)
-
 
     if start_location is None:
 
@@ -165,13 +262,11 @@ def search_route():
 
         return
 
-
     start_lat = start_location[0]
 
     start_lon = start_location[1]
 
     start_name = start_location[2]
-
 
     result_box.insert(
         tk.END,
@@ -185,7 +280,6 @@ def search_route():
 
     root.update()
 
-
     # ======================================
     # FIND DESTINATION
     # ======================================
@@ -193,7 +287,6 @@ def search_route():
     destination_location = find_location(
         destination
     )
-
 
     if destination_location is None:
 
@@ -210,13 +303,11 @@ def search_route():
 
         return
 
-
     end_lat = destination_location[0]
 
     end_lon = destination_location[1]
 
     end_name = destination_location[2]
-
 
     result_box.insert(
         tk.END,
@@ -235,7 +326,6 @@ def search_route():
 
     root.update()
 
-
     # ======================================
     # FIND ROUTE
     # ======================================
@@ -247,7 +337,6 @@ def search_route():
         end_lon
     )
 
-
     if route_data is None:
 
         messagebox.showerror(
@@ -257,33 +346,27 @@ def search_route():
 
         return
 
-
     # ======================================
     # BEST ROUTE
     # ======================================
 
     best_route = route_data["routes"][0]
 
-
     distance_km = (
         best_route["distance"] / 1000
     )
-
 
     time_minutes = (
         best_route["duration"] / 60
     )
 
-
     hours = int(
         time_minutes // 60
     )
 
-
     minutes = int(
         time_minutes % 60
     )
-
 
     # ======================================
     # FUEL CALCULATION
@@ -293,16 +376,13 @@ def search_route():
 
     fuel_price = 100
 
-
     fuel_required = (
         distance_km / mileage
     )
 
-
     fuel_cost = (
         fuel_required * fuel_price
     )
-
 
     # ======================================
     # DISPLAY RESULT
@@ -312,7 +392,6 @@ def search_route():
         "1.0",
         tk.END
     )
-
 
     result_box.insert(
         tk.END,
@@ -329,30 +408,25 @@ def search_route():
         "========================================\n\n"
     )
 
-
     result_box.insert(
         tk.END,
         f"Start:\n{start_name}\n\n"
     )
-
 
     result_box.insert(
         tk.END,
         f"Destination:\n{end_name}\n\n"
     )
 
-
     result_box.insert(
         tk.END,
         f"Route:\n{start} → {destination}\n\n"
     )
 
-
     result_box.insert(
         tk.END,
         f"Distance: {distance_km:.2f} KM\n"
     )
-
 
     if hours > 0:
 
@@ -369,20 +443,17 @@ def search_route():
             f"Travel Time: {minutes} Minutes\n"
         )
 
-
     result_box.insert(
         tk.END,
         f"Fuel Required: "
         f"{fuel_required:.2f} Litres\n"
     )
 
-
     result_box.insert(
         tk.END,
         f"Fuel Cost: "
         f"Rs.{fuel_cost:.2f}\n"
     )
-
 
     # ======================================
     # ALTERNATIVE ROUTES
@@ -405,7 +476,6 @@ def search_route():
             "========================================\n"
         )
 
-
         for i, route in enumerate(
             route_data["routes"][1:],
             1
@@ -415,17 +485,14 @@ def search_route():
                 route["distance"] / 1000
             )
 
-
             alt_time = (
                 route["duration"] / 60
             )
-
 
             result_box.insert(
                 tk.END,
                 f"\nAlternative Route {i}\n"
             )
-
 
             result_box.insert(
                 tk.END,
@@ -433,13 +500,11 @@ def search_route():
                 f"{alt_distance:.2f} KM\n"
             )
 
-
             result_box.insert(
                 tk.END,
                 f"Time: "
                 f"{alt_time:.0f} Minutes\n"
             )
-
 
     result_box.insert(
         tk.END,
@@ -456,7 +521,6 @@ def search_route():
         "========================================\n"
     )
 
-
     # ======================================
     # SAVE COORDINATES FOR MAP
     # ======================================
@@ -466,13 +530,11 @@ def search_route():
     global current_end_lat
     global current_end_lon
 
-
     current_start_lat = start_lat
     current_start_lon = start_lon
 
     current_end_lat = end_lat
     current_end_lon = end_lon
-
 
     map_button.config(
         state=tk.NORMAL
@@ -494,7 +556,6 @@ def open_map():
 
         return
 
-
     map_url = (
         "https://www.openstreetmap.org/directions?"
         f"engine=fossgis_osrm_car&"
@@ -503,7 +564,6 @@ def open_map():
         f"{current_end_lat},"
         f"{current_end_lon}"
     )
-
 
     webbrowser.open(map_url)
 
@@ -585,7 +645,6 @@ start_frame.pack(
     pady=15
 )
 
-
 start_label = tk.Label(
     start_frame,
     text="Starting Location:",
@@ -597,7 +656,6 @@ start_label.grid(
     column=0,
     padx=10
 )
-
 
 start_entry = tk.Entry(
     start_frame,
@@ -622,7 +680,6 @@ destination_frame.pack(
     pady=10
 )
 
-
 destination_label = tk.Label(
     destination_frame,
     text="Destination:",
@@ -634,7 +691,6 @@ destination_label.grid(
     column=0,
     padx=10
 )
-
 
 destination_entry = tk.Entry(
     destination_frame,
@@ -659,7 +715,6 @@ button_frame.pack(
     pady=15
 )
 
-
 search_button = tk.Button(
     button_frame,
     text="FIND ROUTE",
@@ -674,7 +729,6 @@ search_button.grid(
     column=0,
     padx=10
 )
-
 
 map_button = tk.Button(
     button_frame,
@@ -691,7 +745,6 @@ map_button.grid(
     column=1,
     padx=10
 )
-
 
 clear_button = tk.Button(
     button_frame,
